@@ -20,3 +20,5 @@ print(x.shape)
 x = np.array([[200], [17]]) # 2 * 1 열벡터 
 print(x)
 print(x.shape)
+
+#allowing empty commit sorry mom and dad

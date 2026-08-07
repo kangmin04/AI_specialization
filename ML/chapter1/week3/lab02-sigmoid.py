@@ -34,7 +34,7 @@ def sigmoid(z):
          
     """
 
-    g = 1/(1+np.exp(-z))
+    g = 1 / (1 + np.exp(-z))
    
     return g
 
@@ -46,7 +46,7 @@ z_tmp = np.arange(-10,11)
 y = sigmoid(z_tmp)
 
 # Code for pretty printing the two arrays next to each other
-np.set_printoptions(precision=3) 
+np.set_printoptions(precision=3)  # 소수점 아래 자리수 결정 
 print("Input (z), Output (sigmoid(z))")
 print(np.c_[z_tmp, y])
 

@@ -34,6 +34,7 @@ def predict_single_loop(x, w, b):
     """
     n = x.shape[0]
     p = 0
+    
     for i in range(n):
         p_i = x[i] * w[i]  
         p = p + p_i         

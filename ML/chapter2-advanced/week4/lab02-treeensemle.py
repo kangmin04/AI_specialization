@@ -37,14 +37,19 @@ df = pd.get_dummies(data = df,
 print(df.head())
 
 
-features = [x for x in df.columns if x not in 'HeartDisease'] ## Removing our target variable(Y = heartDisease)
+features = [x for x in df.columns if x not in 'HeartDisease'] ## Removing our target variable(Y = heartDisease)]
+print('-------------\nfeatures: ' , features, '\n-------------')
 print(len(features)) # one-hot encoding을 통해 feature 개수가 늘어남 ! 
 
 #train_test_split: divide a dataset into two subsets: a training set and a testing set
 X_train, X_val, y_train, y_val = train_test_split(df[features], df['HeartDisease'], train_size = 0.8, random_state = RANDOM_STATE)
 
 # We will keep the shuffle = True since our dataset has not any time dependency.
+
+print('len df',len(df)) # 전체 데이터 개수 918개 
+print('ratio ; ', len(X_train) / len(df)) # ratio 0.7995~ 
 print(f'train samples: {len(X_train)}')
+# print(f'ratio for train sample : {len()}')
 print(f'validation samples: {len(X_val)}')
 print(f'target proportion: {sum(y_train)/len(y_train):.4f}')
 

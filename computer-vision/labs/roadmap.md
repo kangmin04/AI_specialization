@@ -142,8 +142,98 @@ python3 computer-vision/labs/lab01-pytorch-loop.py
 
 **할 일**
 1. **Inference**: `torchvision`의 ImageNet pretrained ResNet-18을 불러와서 **내 폰으로 찍은 사진**을 분류한다. `weights.transforms()`(resize + normalize 전처리)를 왜 꼭 같이 써야 하는지 확인한다.
-2. **Fine-tuning**: 마지막 층 `model.fc`를 내 클래스 수에 맞는 `nn.Linear`로 교체하고, backbone은 freeze(`requires_grad = False`)한 채 작은 데이터셋(예: `OxfordIIITPet`)으로 학습한다. Step 1의 루프를 **그대로 재사용**한다.
+2. **Fine-tuning**: 마지막 층 `model.fc`를 내 클래스 수에 맞는 `nn.Linear`로 교체하고, backbone은 freeze(`requires_grad = False`)한 채 CIFAR-10 일부(train 5,000장 / test 1,000장)로 학습한다. Step 1의 루프를 **그대로 재사용**한다.
 3. **비교 실험**: pretrained vs. 랜덤 초기화(`weights=None`)로 같은 epoch만큼 학습해서 acc를 비교한다.
+
+**준비물**: 폰으로 찍은 사진 한 장을 `computer-vision/labs/my_photo.jpg`로 저장 (없으면 Part 1은 건너뜀). CIFAR-10(170MB)과 ResNet-18 weight(45MB)는 첫 실행 때 자동 다운로드된다. epoch당 약 10초.
+
+<details>
+<summary>코드: <code>computer-vision/labs/lab02-pretrained-finetune.py</code></summary>
+
+```python
+import os
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Subset
+from torchvision import datasets, models
+from PIL import Image
+import matplotlib.pyplot as plt
+
+device = "mps" if torch.backends.mps.is_available() else "cpu"
+here = os.path.dirname(__file__)
+root = os.path.join(here, "data")
+
+PRETRAINED = True  # 실험: False로 바꿔서 한 번 더 돌리기
+
+# pretrained weight + 그 weight가 학습될 때 썼던 전처리를 세트로 가져옴
+weights = models.ResNet18_Weights.IMAGENET1K_V1
+preprocess = weights.transforms()        # resize 256 -> center crop 224 -> [0,1] -> ImageNet mean/std로 normalize
+categories = weights.meta["categories"]  # ImageNet 1000개 클래스 이름
+print(preprocess)
+
+# ---------------- Part 1: 내 사진 분류 (inference만, 학습 없음) ----------------
+img_path = os.path.join(here, "my_photo.jpg")
+if os.path.exists(img_path):
+    model = models.resnet18(weights=weights).to(device).eval()
+    img = Image.open(img_path).convert("RGB")
+    x = preprocess(img).unsqueeze(0).to(device)  # (3,224,224) -> (1,3,224,224): 배치 차원 추가
+    with torch.no_grad():
+        probs = model(x).softmax(1)[0]
+    top5 = probs.topk(5)
+    for p, i in zip(top5.values, top5.indices):
+        print(f"{categories[i.item()]:>25s}  {p.item():.3f}")
+    plt.imshow(img)
+    plt.title(categories[top5.indices[0].item()])
+    plt.axis("off")
+    plt.show()
+
+# ---------------- Part 2: fine-tuning (마지막 층만 새로 학습) ----------------
+train = Subset(datasets.CIFAR10(root, train=True, download=True, transform=preprocess), range(5000))
+test = Subset(datasets.CIFAR10(root, train=False, download=True, transform=preprocess), range(1000))
+train_loader = DataLoader(train, batch_size=64, shuffle=True)
+test_loader = DataLoader(test, batch_size=256)
+
+model = models.resnet18(weights=weights if PRETRAINED else None)
+for p in model.parameters():
+    p.requires_grad = False                         # backbone freeze
+model.fc = nn.Linear(model.fc.in_features, 10)     # head 교체: 1000클래스 -> 10클래스 (새 층이라 학습됨)
+model = model.to(device)
+
+n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+n_total = sum(p.numel() for p in model.parameters())
+print(f"학습되는 파라미터 {n_train:,} / 전체 {n_total:,}")
+
+opt = torch.optim.Adam(model.fc.parameters(), lr=1e-3)  # optimizer에도 fc만 넘김
+loss_fn = nn.CrossEntropyLoss()
+
+# Step 1이랑 같은 루프. 단 train() 대신 eval(): BatchNorm 통계까지 고정해서 backbone을 진짜로 얼리기 위함
+for epoch in range(3):
+    model.eval()
+    for x, y in train_loader:
+        x, y = x.to(device), y.to(device)
+        loss = loss_fn(model(x), y)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+    correct = 0
+    with torch.no_grad():
+        for x, y in test_loader:
+            x, y = x.to(device), y.to(device)
+            correct += (model(x).argmax(1) == y).sum().item()
+    print(f"epoch {epoch}  loss {loss.item():.3f}  test acc {correct / len(test):.3f}")
+```
+
+</details>
+
+```bash
+python3 computer-vision/labs/lab02-pretrained-finetune.py
+```
+
+**통과 질문**
+1. 내 사진의 top-5 결과는? 틀렸다면 왜 틀렸을까? (힌트: `categories`에 그 물체가 있나?)
+2. "학습되는 파라미터 / 전체" 출력값은? 전체의 몇 %만 학습한 건가?
+3. **실험**: `PRETRAINED = False`로 바꿔서 다시 돌린다. **돌리기 전에** acc를 예측해 적고, 실제 결과와 그 이유를 적는다.
 
 **핵심 포인트**: `model.fc = nn.Linear(512, N)` 한 줄이 transfer learning의 전부다. 나중에 연구 코드에서 `backbone`, `head`, `freeze`라는 단어가 나오면 이 구조다.
 
